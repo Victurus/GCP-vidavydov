@@ -1,0 +1,25 @@
+---
+- hosts: capstonehosts
+  order: sorted
+  remote_user: ansible
+  become: yes
+  become_method: sudo
+  tasks:
+  - name: Check index_old.html existance
+    stat:
+      path: "/var/www/html/index_old.html"
+    register: index_old
+  - name: Move existing index.html to index_old.html
+    copy:
+      remote_src: yes
+      src: /var/www/html/index.html
+      dest: /var/www/html/index_old.html
+    when: index_old.stat.exists == False
+  - name: Preprocess templates
+    template:
+      src: "./jinja_scripts/index.j2"
+      dest: "/var/www/html/index.html"
+  - name: Download content
+    copy:
+      src: "./website/"
+      dest: "/var/www/html"

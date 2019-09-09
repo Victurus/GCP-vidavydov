@@ -1,0 +1,27 @@
+---
+- hosts: ansiblehosts
+  vars:
+    ansible_pass: '$6$KwiJvpZhlVuUN9zu$NV8XMeqoHHsGuH/GKoRh6in5XwOG6tY.7JQknHukz5RSNCknZbDzRe1jFYF93cdRWCSjwzj39HpKkJ6JvpxpH.'
+  gather_facts: no
+  remote_user: ansible
+  become: true
+  tasks:
+  - name: Add new user named ansible
+    user:
+      name: ansible
+      shell: /bin/bash
+      password: "{{ ansible_pass }}"
+  - name: Add ansible to sudoers
+    copy:
+      dest: "/etc/sudoers.d/ansible"
+      content: "ansible ALL=(ALL) NOPASSWD:ALL"
+  - name: Deploy ssh key
+    authorized_key:
+      user: testuser 
+      key: "{{ lookup('file', '/home/ansible/.ssh/id_rsa.pub') }}"
+      state: present
+  handlers:
+    - name: restart ssh
+      service:
+        name: sshd
+        state: restarted
