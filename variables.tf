@@ -2,6 +2,9 @@ variable "project_name" {}
 variable "billing_account" {}
 variable "org_id" {}
 variable "region" {}
+variable "target_size" {
+  default = 3
+}
 variable "ansible_user" {
   default = "ansible"
 }

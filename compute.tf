@@ -45,6 +45,8 @@ resource "google_compute_firewall" "allow_ssh_icmp" {
   }
 }
 
+# Instances
+
 resource "google_compute_instance" "instance_1" {
   name = "tf-compute-1"
   project = "${google_project_services.project.project}"
@@ -170,7 +172,7 @@ resource "google_compute_network_endpoint_group" "neg_1" {
   name         = "neg-1"
   network      = "${google_compute_network.main_net.self_link}"
   subnetwork   = "${google_compute_subnetwork.subnet_1.self_link}"
-  project = "${google_project_services.project.project}"
+  project      = "${google_project_services.project.project}"
   default_port = "80"
   zone         = "${data.google_compute_zones.available.names[0]}"
 }
@@ -181,6 +183,26 @@ resource "google_compute_network_endpoint" "nee_1" {
   project    = "${google_project_services.project.project}"
   instance   = "${google_compute_instance.gateway_ins_1.name}"
   ip_address = "${google_compute_instance.gateway_ins_1.network_interface.0.network_ip}"
+  port       = "${google_compute_network_endpoint_group.neg_1.default_port}"
+  zone       = "${data.google_compute_zones.available.names[0]}"
+}
+
+resource "google_compute_network_endpoint" "nee_2" {
+  network_endpoint_group = "${google_compute_network_endpoint_group.neg_1.id}"
+
+  project    = "${google_project_services.project.project}"
+  instance   = "${google_compute_instance.gateway_ins_2.name}"
+  ip_address = "${google_compute_instance.gateway_ins_2.network_interface.0.network_ip}"
+  port       = "${google_compute_network_endpoint_group.neg_1.default_port}"
+  zone       = "${data.google_compute_zones.available.names[0]}"
+}
+
+resource "google_compute_network_endpoint" "nee_3" {
+  network_endpoint_group = "${google_compute_network_endpoint_group.neg_1.id}"
+
+  project    = "${google_project_services.project.project}"
+  instance   = "${google_compute_instance.gateway_ins_3.name}"
+  ip_address = "${google_compute_instance.gateway_ins_3.network_interface.0.network_ip}"
   port       = "${google_compute_network_endpoint_group.neg_1.default_port}"
   zone       = "${data.google_compute_zones.available.names[0]}"
 }
@@ -204,12 +226,53 @@ resource "google_compute_instance" "gateway_ins_1" {
   metadata = {
     ssh-keys = "${var.ansible_user}:${file(var.ansible_user_pub_key_path)}"
   }
-#  metadata_startup_script = <<_EOF
-#sysctl net.ipv4.ip_forward=1
-#iptables -t nat -F
-#iptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT --destination ${google_compute_address.int_lb_address_1.address}:80
-#iptables -t nat -A POSTROUTING -p tcp -d ${google_compute_address.int_lb_address_1.address} --dport 80 -j SNAT --to-source ${google_compute_instance.gateway_ins_1.network_interface.0.network_ip}
-#_EOF
+
+  network_interface {
+    network = "${google_compute_network.main_net.self_link}"
+    subnetwork = "${google_compute_subnetwork.subnet_1.self_link}"
+    access_config {}
+  }
+}
+
+resource "google_compute_instance" "gateway_ins_2" {
+  project = "${google_project_services.project.project}"
+  zone = "${data.google_compute_zones.available.names[0]}"
+  name = "gateway-ins-2"
+  machine_type = "f1-micro"
+  can_ip_forward = "true"
+  tags = ["gateway"]
+  boot_disk {
+    initialize_params {
+      image = "${var.boot_disk}"
+    }
+  }
+  metadata = {
+    ssh-keys = "${var.ansible_user}:${file(var.ansible_user_pub_key_path)}"
+  }
+
+  network_interface {
+    network = "${google_compute_network.main_net.self_link}"
+    subnetwork = "${google_compute_subnetwork.subnet_1.self_link}"
+    access_config {}
+  }
+}
+
+resource "google_compute_instance" "gateway_ins_3" {
+  project = "${google_project_services.project.project}"
+  zone = "${data.google_compute_zones.available.names[0]}"
+  name = "gateway-ins-3"
+  machine_type = "f1-micro"
+  can_ip_forward = "true"
+  tags = ["gateway"]
+  boot_disk {
+    initialize_params {
+      image = "${var.boot_disk}"
+    }
+  }
+  metadata = {
+    ssh-keys = "${var.ansible_user}:${file(var.ansible_user_pub_key_path)}"
+  }
+
   network_interface {
     network = "${google_compute_network.main_net.self_link}"
     subnetwork = "${google_compute_subnetwork.subnet_1.self_link}"
@@ -291,6 +354,104 @@ resource "google_compute_firewall" "allow_traffic" {
   network = "${google_compute_network.main_net.name}"
   project = "${google_project_services.project.project}"
   target_tags = ["gateway"]
+
+  allow {
+    protocol = "tcp"
+    ports = ["80"]
+  }
+}
+
+# ---------------- MIG --------------------------------
+
+resource "google_compute_instance_template" "template_1" {
+  project = "${google_project_services.project.project}"
+  name_prefix = "tmplt-1-"
+
+  machine_type = "f1-micro"
+
+  region = "${var.region}"
+
+  tags = ["group-mig-1"]
+
+  disk {
+    source_image = "${var.boot_disk}"
+    auto_delete = true
+    boot = true
+    type = "PERSISTENT"
+    mode = "READ_WRITE"
+  }
+  
+  metadata = {
+    ssh-keys = "${var.ansible_user}:${file(var.ansible_user_pub_key_path)}"
+  }
+
+  network_interface {
+    subnetwork = "${google_compute_subnetwork.subnet_1.self_link}"
+    access_config {}
+  }
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_compute_instance_group_manager" "managed_group_1" {
+  project            = "${google_project_services.project.project}"
+  name               = "capstone-g1"
+  description        = "Capstone compute VM Instance Group"
+  wait_for_instances = "false"
+
+  base_instance_name = "capstone-mig"
+
+  instance_template = "${google_compute_instance_template.template_1.self_link}"
+
+  zone = "${data.google_compute_zones.available.names[0]}"
+
+  update_strategy = "ROLLING_UPDATE"
+
+  target_pools = ["${google_compute_target_pool.target_pool_1.self_link}"]
+
+  target_size = "${var.target_size}"
+
+  named_port {
+    name = "capstone-port"
+    port = "80"
+  }
+}
+
+resource "google_compute_target_pool" "target_pool_1" {
+  name = "tp1"
+  description = "Target pool for managed instance group 1"
+  project = "${google_project_services.project.project}"
+  region = "${var.region}"
+  health_checks = [
+    "${google_compute_http_health_check.ext_hcheck_2.self_link}"
+  ]
+}
+
+resource "google_compute_http_health_check" "ext_hcheck_2" {
+  name               = "ext-hcheck-2"
+  request_path       = "/"
+  check_interval_sec = 1
+  timeout_sec        = 1
+  port = "80"
+  project = "${google_project_services.project.project}"
+}
+
+resource "google_compute_forwarding_rule" "ext_lb_2" {
+  name = "ext-lb-2"
+  project = "${google_project_services.project.project}"
+  description = "Second external load balancer"
+  load_balancing_scheme = "EXTERNAL"
+  port_range = "80"
+  target = "${google_compute_target_pool.target_pool_1.self_link}"
+}
+
+resource "google_compute_firewall" "allow_mig_traffic" {
+  name = "allow-mig-traffic"
+  network = "${google_compute_network.main_net.name}"
+  project = "${google_project_services.project.project}"
+  target_tags = ["group-mig-1"]
 
   allow {
     protocol = "tcp"

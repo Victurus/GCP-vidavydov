@@ -1,5 +1,5 @@
 ---
-- hosts: capstonehosts
+- hosts: capstonehosts_mig
   remote_user: ansible
   become: yes
   become_method: sudo

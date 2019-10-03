@@ -1,5 +1,5 @@
 ---
-- hosts: capstonehosts
+- hosts: capstonehosts_mig
   order: sorted
   remote_user: ansible
   become: yes
