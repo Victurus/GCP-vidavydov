@@ -27,7 +27,7 @@ grant_organization_role() {
 }
 
 # Export variables necessary for terraform execution
-USER=vidavydov
+USER=${1:-vidavydov}
 export TF_VAR_org_id=$(gcloud organizations list --format="value(ID)" --filter="DISPLAY_NAME ~ .*")
 export TF_VAR_billing_account=$(gcloud beta billing accounts list --format="value(ACCOUNT_ID)" --filter="NAME ~ .* AND OPEN=True")
 export TF_ADMIN=${USER}-capstone # Main project
